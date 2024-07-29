@@ -16,6 +16,7 @@ Only reading the file with raw input stream reads of 64MB is ~3s
 | 16MB read size | 18s |
 | 64MB read size | 15s |
 | ~~128MB read size~~ | 15s |
+| Reduce Result allocation | 13s |
 | Multithreaded read | |
 
 ## Go

@@ -55,7 +55,7 @@ public class CalculateAverage {
             for (; tempIdx < endOfChunk && chunk[tempIdx] != EOL; ++tempIdx) {
                 // second part is the temp
             }
-            int temp = parseNumber(chunk, tempStart, tempIdx - tempStart);
+            short temp = parseNumber(chunk, tempStart, tempIdx - tempStart);
             lineIdx = tempIdx + 1;
 
             var result = measurements.get(station);
@@ -65,18 +65,14 @@ public class CalculateAverage {
                 measurements.put(station, result);
                 // System.exit(1);
             } else {
-                int min = Math.min(result.min, temp);
-                int max = Math.max(result.max, temp);
-                int sum = result.sum + temp;
-                int count = result.count + 1;
-                measurements.put(station, new Result(min, max, sum, count));
+                result.accumulate(temp);
             }
         }
         // System.out.println("done with measurements");
         return measurements;
     }
 
-    private static int parseNumber(byte[] chunk, int tempIdx, int len) {
+    private static short parseNumber(byte[] chunk, int tempIdx, int len) {
         // System.out.printf("number %s, idx %d, len %d\n", new String(chunk, tempIdx, len), tempIdx, len);
         boolean isNegative = false;
         if (chunk[tempIdx] == DASH) {
@@ -85,14 +81,14 @@ public class CalculateAverage {
             // System.out.printf("idx %d\n", tempIdx);
         }
         // System.out.println("negative " + isNegative);
-        int sum;
+        short sum;
         if (chunk[tempIdx + 1] == DOT) {
             // single digit number
-            sum = chunk[tempIdx] - ZERO;
+            sum = (short) (chunk[tempIdx] - ZERO);
             tempIdx += 2;
         } else {
             // 2 digit number
-            sum = (chunk[tempIdx] - ZERO) * 100 + (chunk[tempIdx + 1] - ZERO) * 10;
+            sum = (short) ((chunk[tempIdx] - ZERO) * 100 + (chunk[tempIdx + 1] - ZERO) * 10);
             // System.out.printf("idx %d sum %d\n", tempIdx, sum);
             tempIdx += 3;
         }
@@ -100,7 +96,7 @@ public class CalculateAverage {
         // System.out.printf("idx %d sum %d, d %d\n", tempIdx, sum, chunk[tempIdx]);
 
         if (isNegative) {
-            sum = -sum;
+            sum = (short) -sum;
         }
 
         return sum;
@@ -163,8 +159,8 @@ public class CalculateAverage {
                 measurements.put(key, e.getValue());
             } else {
                 var value = e.getValue();
-                var newResult = new Result(Math.min(existing.min, value.min), Math.max(existing.max, value.max), existing.sum + value.sum, existing.count + value.count);
-                measurements.put(key, value);
+                value.accumulate(value);
+                existing.accumulate(value);
             }
         }
     }
@@ -196,13 +192,46 @@ public class CalculateAverage {
         }
     }
 
-    private static record Result(int min, int max, int sum, int count) {
+    private static final class Result {
+
+        short min = 999;
+        short max = -999;
+        int count = 1;
+        long sum;
+
+        Result(short min, short max, long sum, int count) {
+            this.min = min;
+            this.max = max;
+            this.count = count;
+            this.sum = sum;
+        }
+
+        void accumulate(short temp) {
+            if (temp < min) {
+                min = temp;
+            } else if (temp > max) {
+                max = temp;
+            }
+            sum += temp;
+            ++count;
+        }
+
+        void accumulate(Result other) {
+            if (other.min < min) {
+                min = other.min;
+            }
+            if (other.max > max) {
+                max = other.max;
+            }
+            sum += other.sum;
+            count += other.count;
+        }
+
         // TODO implment formatting /10 and round to 1 digit
         // @Override
         // public String toString() {
         //     return round(min) + "/" + round(mean) + "/" + round(max);
         // }
-
     }
 
     private static record ResultRow(double min, double mean, double max) {
