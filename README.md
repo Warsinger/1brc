@@ -10,6 +10,8 @@ Only reading the file with raw input stream reads of 64MB is ~3s
 
 There is some bug in the rounding that has things off by a small amount (~0.1-0.2 in some cases)
 
+Timings are on Apple MBPro M1 16GB RAM
+
 | Change | Timing |
 | --- | --- |
 | Initial basline on my local machine (battery) | 3m 59s |
