@@ -8,6 +8,8 @@ Running the 1brc in Java and Go and ???
 
 Only reading the file with raw input stream reads of 64MB is ~3s
 
+There is some bug in the rounding that has things off by a small amount (~0.1-0.2 in some cases)
+
 | Change | Timing |
 | --- | --- |
 | Initial basline on my local machine (battery) | 3m 59s |
@@ -17,7 +19,7 @@ Only reading the file with raw input stream reads of 64MB is ~3s
 | 64MB read size | 15s |
 | ~~128MB read size~~ | 15s |
 | Reduce Result allocation | 13s |
-| Multithreaded read | |
+| General bug fixing ??? | 11s |
 
 ## Go
 

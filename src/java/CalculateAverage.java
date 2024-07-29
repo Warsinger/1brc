@@ -38,7 +38,7 @@ public class CalculateAverage {
     private static final byte DASH = 45;
     private static final byte DOT = 46;
     private static final byte ZERO = 48;
-    private static final int READ_SIZE = 8192;// * 8192;
+    private static final int READ_SIZE = 8192 * 8192;
 
     private static Map<String, Result> processChunk(byte[] chunk, int endOfChunk) {
         if (chunk[0] == SEMICOLON) {
