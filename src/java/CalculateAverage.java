@@ -60,19 +60,21 @@ public class CalculateAverage {
 
             var result = measurements.get(station);
             if (result == null) {
-                result = new Result(temp, temp, temp, 1);
                 // System.out.printf("new station found %s;%d\n", station, temp);
-                measurements.put(station, result);
+                measurements.put(station, new Result(temp));
                 // System.exit(1);
             } else {
+                // System.out.printf("existing station found %s;%d;%s\n", station, temp, result);
                 result.accumulate(temp);
+                // System.out.printf("new result %s\n", result);
+                // System.exit(1);
             }
         }
         // System.out.println("done with measurements");
         return measurements;
     }
 
-    private static short parseNumber(byte[] chunk, int tempIdx, int len) {
+    static short parseNumber(byte[] chunk, int tempIdx, int len) {
         // System.out.printf("number %s, idx %d, len %d\n", new String(chunk, tempIdx, len), tempIdx, len);
         boolean isNegative = false;
         if (chunk[tempIdx] == DASH) {
@@ -84,8 +86,9 @@ public class CalculateAverage {
         short sum;
         if (chunk[tempIdx + 1] == DOT) {
             // single digit number
-            sum = (short) (chunk[tempIdx] - ZERO);
+            sum = (short) ((chunk[tempIdx] - ZERO) * 10);
             tempIdx += 2;
+            // System.out.printf("idx %d sum %d\n", tempIdx, sum);
         } else {
             // 2 digit number
             sum = (short) ((chunk[tempIdx] - ZERO) * 100 + (chunk[tempIdx + 1] - ZERO) * 10);
@@ -118,10 +121,10 @@ public class CalculateAverage {
 
     private static Map<String, Result> calculate(String fileName) throws IOException, InterruptedException, ExecutionException {
         try (var input = Files.newInputStream(Paths.get(fileName), StandardOpenOption.READ)) {
-            var measurements = new HashMap<String, Result>(10000);
+            var measurements = new TreeMap<String, Result>();
             var chunk = new byte[READ_SIZE];
             int offset = 0;
-            int cores = Runtime.getRuntime().availableProcessors() - 2;
+            int cores = Runtime.getRuntime().availableProcessors() + 1;
             var exs = newBlockingThreadPool(cores);
             var futures = new ArrayList<Future<Map<String, Result>>>();
             while (true) {
@@ -181,6 +184,7 @@ public class CalculateAverage {
         var fileName = args[0];
 
         var measurements = calculate(fileName);
+        // var measurements = calculateInitial(fileName);
 
         System.out.println(measurements);
     }
@@ -194,16 +198,17 @@ public class CalculateAverage {
 
     private static final class Result {
 
-        short min = 999;
-        short max = -999;
-        int count = 1;
+        short min;
+        short max;
+        int count;
         long sum;
 
-        Result(short min, short max, long sum, int count) {
-            this.min = min;
-            this.max = max;
-            this.count = count;
-            this.sum = sum;
+        Result(short temp) {
+            this.min = temp;
+            this.max = temp;
+            this.count = 1;
+            this.sum = temp;
+            // System.out.printf("new Result %d, %s\n", temp, Result.this);
         }
 
         void accumulate(short temp) {
@@ -214,6 +219,7 @@ public class CalculateAverage {
             }
             sum += temp;
             ++count;
+            // System.out.printf("acc Result %d, %s\n", temp, Result.this);
         }
 
         void accumulate(Result other) {
@@ -227,11 +233,11 @@ public class CalculateAverage {
             count += other.count;
         }
 
-        // TODO implment formatting /10 and round to 1 digit
-        // @Override
-        // public String toString() {
-        //     return round(min) + "/" + round(mean) + "/" + round(max);
-        // }
+        // TODO implement formatting /10 and round to 1 digit
+        @Override
+        public String toString() {
+            return round10(min) + "/" + round(round10(sum) / count) + "/" + round10(max);
+        }
     }
 
     private static record ResultRow(double min, double mean, double max) {
@@ -241,12 +247,15 @@ public class CalculateAverage {
             return round(min) + "/" + round(mean) + "/" + round(max);
         }
 
-        private double round(double value) {
-            return Math.round(value * 10.0) / 10.0;
-        }
     }
 
-    ;
+    private static double round(double value) {
+        return Math.round(value * 10.0) / 10.0;
+    }
+
+    private static double round10(double value) {
+        return Math.round(value) / 10.0;
+    }
 
     private static class MeasurementAggregator {
 
