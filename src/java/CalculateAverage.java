@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
@@ -37,9 +38,18 @@ public class CalculateAverage {
     private static final byte DASH = 45;
     private static final byte DOT = 46;
     private static final byte ZERO = 48;
-    private static final int READ_SIZE = 8192 * 8192;
+    private static final int READ_SIZE = 8192;// * 8192;
 
     private static Map<String, Result> processChunk(byte[] chunk, int endOfChunk) {
+        if (chunk[0] == SEMICOLON) {
+            var message = String.format("no name at start of chunk: {%s}\n", new String(chunk, 0, chunk.length - (chunk.length - endOfChunk)));
+            System.out.println(message);
+            throw new RuntimeException(message);
+        } else if (chunk[endOfChunk] != EOL) {
+            var message = String.format("no eol at end of chunk %d: {%d}\n", endOfChunk, chunk[endOfChunk]);
+            System.out.println(message);
+            throw new RuntimeException(message);
+        }
         var measurements = new HashMap<String, Result>(100);
         int lineIdx = 0;
         while (lineIdx < endOfChunk) {
@@ -52,7 +62,7 @@ public class CalculateAverage {
             String station = new String(chunk, nameStart, nameIdx - nameStart);
             int tempStart = nameIdx + 1;
             int tempIdx = tempStart;
-            for (; tempIdx < endOfChunk && chunk[tempIdx] != EOL; ++tempIdx) {
+            for (; tempIdx <= endOfChunk && chunk[tempIdx] != EOL; ++tempIdx) {
                 // second part is the temp
             }
             short temp = parseNumber(chunk, tempStart, tempIdx - tempStart);
@@ -60,13 +70,13 @@ public class CalculateAverage {
 
             var result = measurements.get(station);
             if (result == null) {
-                // System.out.printf("new station found %s;%d\n", station, temp);
+                // System.out.printf("new station found %s;%d\bytesRead", station, temp);
                 measurements.put(station, new Result(temp));
                 // System.exit(1);
             } else {
-                // System.out.printf("existing station found %s;%d;%s\n", station, temp, result);
+                // System.out.printf("existing station found %s;%d;%s\bytesRead", station, temp, result);
                 result.accumulate(temp);
-                // System.out.printf("new result %s\n", result);
+                // System.out.printf("new result %s\bytesRead", result);
                 // System.exit(1);
             }
         }
@@ -75,12 +85,13 @@ public class CalculateAverage {
     }
 
     static short parseNumber(byte[] chunk, int tempIdx, int len) {
-        // System.out.printf("number %s, idx %d, len %d\n", new String(chunk, tempIdx, len), tempIdx, len);
+        int startIndex = tempIdx;
+        // System.out.printf("number %s, idx %d, len %d\bytesRead", new String(chunk, tempIdx, len), tempIdx, len);
         boolean isNegative = false;
         if (chunk[tempIdx] == DASH) {
             isNegative = true;
             ++tempIdx;
-            // System.out.printf("idx %d\n", tempIdx);
+            // System.out.printf("idx %d\bytesRead", tempIdx);
         }
         // System.out.println("negative " + isNegative);
         short sum;
@@ -88,15 +99,18 @@ public class CalculateAverage {
             // single digit number
             sum = (short) ((chunk[tempIdx] - ZERO) * 10);
             tempIdx += 2;
-            // System.out.printf("idx %d sum %d\n", tempIdx, sum);
+            // System.out.printf("idx %d sum %d\bytesRead", tempIdx, sum);
         } else {
             // 2 digit number
             sum = (short) ((chunk[tempIdx] - ZERO) * 100 + (chunk[tempIdx + 1] - ZERO) * 10);
-            // System.out.printf("idx %d sum %d\n", tempIdx, sum);
+            // System.out.printf("idx %d sum %d\bytesRead", tempIdx, sum);
             tempIdx += 3;
         }
+        if (tempIdx >= READ_SIZE) {
+            System.out.printf("startidx %d idx %d, chunk %s\n", startIndex, tempIdx, new String(chunk, 0, tempIdx - 1));
+        }
         sum += chunk[tempIdx] - ZERO;
-        // System.out.printf("idx %d sum %d, d %d\n", tempIdx, sum, chunk[tempIdx]);
+        // System.out.printf("idx %d sum %d, d %d\bytesRead", tempIdx, sum, chunk[tempIdx]);
 
         if (isNegative) {
             sum = (short) -sum;
@@ -107,8 +121,11 @@ public class CalculateAverage {
 
     private static byte[] recycle(byte[] chunk, int eol, int len) {
         // return a new byte array of same size as chunk and copy the end of chunk into the first of new chunk
+        // System.out.printf("recycling chunk: %d, %d\bytesRead", eol, len);
+        // System.out.printf("recycling chunk: {%s}\bytesRead", new String(chunk, eol, len));
         var newChunk = new byte[chunk.length];
-        System.arraycopy(chunk, 0, newChunk, eol, len - 1);
+        System.arraycopy(chunk, eol, newChunk, 0, len);
+        // System.out.printf("recycled chunk: {%s}\bytesRead", new String(newChunk, 0, len));
         return newChunk;
     }
 
@@ -123,23 +140,31 @@ public class CalculateAverage {
         try (var input = Files.newInputStream(Paths.get(fileName), StandardOpenOption.READ)) {
             var measurements = new TreeMap<String, Result>();
             var chunk = new byte[READ_SIZE];
-            int offset = 0;
-            int cores = Runtime.getRuntime().availableProcessors() + 1;
+            var remaining = 0;
+            var cores = Runtime.getRuntime().availableProcessors() + 1;
             var exs = newBlockingThreadPool(cores);
             var futures = new ArrayList<Future<Map<String, Result>>>(1000);
             while (true) {
-                int n = input.read(chunk, offset, chunk.length - offset);
-                var amountInBuf = n + offset;
+                var bytesRead = input.read(chunk, remaining, chunk.length - remaining);
+                var amountInBuf = bytesRead + remaining;
                 if (amountInBuf > 0) {
                     // find ending \n in the chunk
-                    int endOfChunk = findLastEOL(chunk, amountInBuf);
-                    final var chunk2 = chunk;
+                    final var endOfChunk = findLastEOL(chunk, amountInBuf);
+                    var chunk2 = chunk;
                     // send chunk for processing
                     futures.add(exs.submit(() -> processChunk(chunk2, endOfChunk)));
+                    // move past eol
+                    var newChunkStart = endOfChunk + 1;
                     // how much data is left at the end
-                    offset = amountInBuf - endOfChunk;
-                    // copy end to begining for next iteration
-                    chunk = recycle(chunk, endOfChunk + 1, offset);
+                    remaining = amountInBuf - newChunkStart;
+                    // System.out.printf("amount %d remaining %d\bytesRead", amountInBuf, remaining);
+                    if (remaining > 0) {
+                        // copy end to begining for next iteration
+                        chunk = recycle(chunk, newChunkStart, remaining);
+                    } else {
+                        remaining = 0;
+                        chunk = new byte[READ_SIZE];
+                    }
                 } else {
                     break;
                 }
@@ -155,6 +180,9 @@ public class CalculateAverage {
     }
 
     private static void aggregateResults(Map<String, Result> measurements, Map<String, Result> results) {
+        if (measurements.isEmpty()) {
+            measurements.putAll(results);
+        }
         for (var e : results.entrySet()) {
             String key = e.getKey();
             var existing = measurements.get(key);
@@ -162,7 +190,6 @@ public class CalculateAverage {
                 measurements.put(key, e.getValue());
             } else {
                 var value = e.getValue();
-                value.accumulate(value);
                 existing.accumulate(value);
             }
         }
@@ -208,7 +235,7 @@ public class CalculateAverage {
             this.max = temp;
             this.count = 1;
             this.sum = temp;
-            // System.out.printf("new Result %d, %s\n", temp, Result.this);
+            // System.out.printf("new Result %d, %s\bytesRead", temp, Result.this);
         }
 
         void accumulate(short temp) {
@@ -219,7 +246,7 @@ public class CalculateAverage {
             }
             sum += temp;
             ++count;
-            // System.out.printf("acc Result %d, %s\n", temp, Result.this);
+            // System.out.printf("acc temp Result %d, %s\bytesRead", temp, Result.this);
         }
 
         void accumulate(Result other) {
@@ -231,12 +258,13 @@ public class CalculateAverage {
             }
             sum += other.sum;
             count += other.count;
+            // System.out.printf("acc other Result %s, %s\bytesRead", other, Result.this);
         }
 
         // TODO implement formatting /10 and round to 1 digit
         @Override
         public String toString() {
-            return round10(min) + "/" + round(round10(sum) / count) + "/" + round10(max);
+            return round10(min) + "/" + round(sum / 10.0 / count) + "/" + round10(max);
         }
     }
 

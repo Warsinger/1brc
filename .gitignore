@@ -2,5 +2,5 @@ build/
 src/java/CalculateAverage_baseline.java
 .DS_Store
 profile.html
-out.small.txt
-out2.small.txt
+out*.txt
+src/java/CalculateAverage_AbstractKamen.java

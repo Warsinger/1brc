@@ -1,9 +1,12 @@
 #!/bin/bash -e +x
 
-javac -sourcepath src/java -d build/java src/java/CalculateAverage.java src/java/CalculateAverageTest.java
+export JAVA_OPTS="--enable-preview"
+javac -sourcepath src/java -d build/java src/java/CalculateAverage.java src/java/CalculateAverageTest.java src/java/CalculateAverage_AbstractKamen.java
 
 # time java -cp build/java CalculateAverage ./data/weather_stations.csv
-time java -Xmx6g -cp build/java CalculateAverage /Users/mlee/Downloads/data/measurements.txt
+# time java -Xmx6g -cp build/java CalculateAverage_AbstractKamen  /Users/mlee/Downloads/data/measurements_med.txt
+time java -Xmx6g -cp build/java CalculateAverage /Users/mlee/Downloads/data/measurements_med.txt
+# time java -Xmx6g -cp build/java CalculateAverage /Users/mlee/Downloads/data/measurements.txt
 # time java -cp build/java CalculateAverage /Users/mlee/Downloads/data/measurements_a.txt
 # time java -cp build/java CalculateAverage /Users/mlee/Downloads/data/measurements_sm.txt
 
