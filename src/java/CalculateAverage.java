@@ -126,7 +126,7 @@ public class CalculateAverage {
             int offset = 0;
             int cores = Runtime.getRuntime().availableProcessors() + 1;
             var exs = newBlockingThreadPool(cores);
-            var futures = new ArrayList<Future<Map<String, Result>>>();
+            var futures = new ArrayList<Future<Map<String, Result>>>(1000);
             while (true) {
                 int n = input.read(chunk, offset, chunk.length - offset);
                 var amountInBuf = n + offset;

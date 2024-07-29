@@ -1,3 +1,6 @@
 build/
 src/java/CalculateAverage_baseline.java
 .DS_Store
+out2.small.txt
+out.small.txt
+profile.html
