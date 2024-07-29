@@ -2,5 +2,6 @@
 
 javac -sourcepath src/java -d build/java src/java/CalculateAverage.java
 
-time java -cp build/java CalculateAverage ./data/weather_stations.csv
-# time java -cp build/java CalculateAverage /Users/mlee/Downloads/data/measurements.txt
+# time java -cp build/java CalculateAverage ./data/weather_stations.csv
+time java -cp build/java CalculateAverage /Users/mlee/Downloads/data/measurements.txt
+# time java -cp build/java CalculateAverage /Users/mlee/Downloads/data/measurements_sm.txt
