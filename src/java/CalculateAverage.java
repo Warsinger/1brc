@@ -17,9 +17,16 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collector;
 import static java.util.stream.Collectors.groupingBy;
 
@@ -30,9 +37,10 @@ public class CalculateAverage {
     private static final byte DASH = 45;
     private static final byte DOT = 46;
     private static final byte ZERO = 48;
-    private static final int READ_SIZE = 1024 * 1024;
+    private static final int READ_SIZE = 8192 * 8192;
 
-    private static void processChunk(byte[] chunk, int endOfChunk, Map<String, Result> measurements) {
+    private static Map<String, Result> processChunk(byte[] chunk, int endOfChunk) {
+        var measurements = new HashMap<String, Result>(100);
         int lineIdx = 0;
         while (lineIdx < endOfChunk) {
             // read till EOL
@@ -64,6 +72,8 @@ public class CalculateAverage {
                 measurements.put(station, new Result(min, max, sum, count));
             }
         }
+        // System.out.println("done with measurements");
+        return measurements;
     }
 
     private static int parseNumber(byte[] chunk, int tempIdx, int len) {
@@ -97,29 +107,36 @@ public class CalculateAverage {
     }
 
     private static byte[] recycle(byte[] chunk, int eol, int len) {
-        // Try skipping the copy until we parallelize and need to make a safety copy
         // return a new byte array of same size as chunk and copy the end of chunk into the first of new chunk
-        var newChunk = chunk; // new byte[chunk.length];
+        var newChunk = new byte[chunk.length];
         System.arraycopy(chunk, 0, newChunk, eol, len - 1);
         return newChunk;
     }
 
-    private static Map<String, Result> readFile(String fileName) throws IOException {
+    public static ExecutorService newBlockingThreadPool(int threadCount) {
+        return new ThreadPoolExecutor(threadCount, threadCount,
+                0L, TimeUnit.MILLISECONDS,
+                new LinkedBlockingQueue<>(threadCount),
+                new ThreadPoolExecutor.CallerRunsPolicy());
+    }
+
+    private static Map<String, Result> calculate(String fileName) throws IOException, InterruptedException, ExecutionException {
         try (var input = Files.newInputStream(Paths.get(fileName), StandardOpenOption.READ)) {
-            var measurments = new HashMap<String, Result>(10000);
+            var measurements = new HashMap<String, Result>(10000);
             var chunk = new byte[READ_SIZE];
             int offset = 0;
+            int cores = Runtime.getRuntime().availableProcessors() - 2;
+            var exs = newBlockingThreadPool(cores);
+            var futures = new ArrayList<Future<Map<String, Result>>>();
             while (true) {
                 int n = input.read(chunk, offset, chunk.length - offset);
                 var amountInBuf = n + offset;
                 if (amountInBuf > 0) {
-                    // processChunk data
-
                     // find ending \n in the chunk
                     int endOfChunk = findLastEOL(chunk, amountInBuf);
-
+                    final var chunk2 = chunk;
                     // send chunk for processing
-                    processChunk(chunk, endOfChunk, measurments);
+                    futures.add(exs.submit(() -> processChunk(chunk2, endOfChunk)));
                     // how much data is left at the end
                     offset = amountInBuf - endOfChunk;
                     // copy end to begining for next iteration
@@ -128,7 +145,27 @@ public class CalculateAverage {
                     break;
                 }
             }
-            return measurments;
+            // System.err.println("futures " + futures.size());
+            for (var f : futures) {
+                var results = f.get();
+                aggregateResults(measurements, results);
+            }
+            exs.shutdown();
+            return measurements;
+        }
+    }
+
+    private static void aggregateResults(Map<String, Result> measurements, Map<String, Result> results) {
+        for (var e : results.entrySet()) {
+            String key = e.getKey();
+            var existing = measurements.get(key);
+            if (existing == null) {
+                measurements.put(key, e.getValue());
+            } else {
+                var value = e.getValue();
+                var newResult = new Result(Math.min(existing.min, value.min), Math.max(existing.max, value.max), existing.sum + value.sum, existing.count + value.count);
+                measurements.put(key, value);
+            }
         }
     }
 
@@ -141,14 +178,13 @@ public class CalculateAverage {
         throw new RuntimeException("we should have found an EOL");
     }
 
-    public static void main(String[] args) throws IOException {
+    public static void main(String[] args) throws IOException, InterruptedException, ExecutionException {
         if (args.length < 1) {
             throw new RuntimeException("file name not specified");
         }
         var fileName = args[0];
 
-        var measurements = readFile(fileName);
-        // var measurements = calculate(fileName);
+        var measurements = calculate(fileName);
 
         System.out.println(measurements);
     }
@@ -189,33 +225,6 @@ public class CalculateAverage {
         private double max = Double.NEGATIVE_INFINITY;
         private double sum;
         private long count;
-    }
-
-    private static Map<String, ResultRow> calculate(String fileName) throws IOException {
-        Collector<Measurement, MeasurementAggregator, ResultRow> collector = Collector.of(
-                MeasurementAggregator::new,
-                (a, m) -> {
-                    a.min = Math.min(a.min, m.value);
-                    a.max = Math.max(a.max, m.value);
-                    a.sum += m.value;
-                    a.count++;
-                },
-                (agg1, agg2) -> {
-                    var res = new MeasurementAggregator();
-                    res.min = Math.min(agg1.min, agg2.min);
-                    res.max = Math.max(agg1.max, agg2.max);
-                    res.sum = agg1.sum + agg2.sum;
-                    res.count = agg1.count + agg2.count;
-
-                    return res;
-                },
-                agg -> {
-                    return new ResultRow(agg.min, (Math.round(agg.sum * 10.0) / 10.0) / agg.count, agg.max);
-                });
-        Map<String, ResultRow> measurements = new TreeMap<>(Files.lines(Paths.get(fileName))
-                .map(l -> new Measurement(l.split(";")))
-                .collect(groupingBy(m -> m.station(), collector)));
-        return measurements;
     }
 
     private static Map<String, ResultRow> calculateInitial(String fileName) throws IOException {
