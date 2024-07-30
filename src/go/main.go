@@ -15,7 +15,7 @@ type Result struct {
 	min   int16
 	max   int16
 	sum   int64
-	count uint64
+	count int
 }
 
 func NewResult(temp int16) *Result {
@@ -41,15 +41,33 @@ func (r *Result) addTemp(temp int16) {
 	r.sum += int64(temp)
 	r.count++
 }
-func (r Result) String() string {
-	return fmt.Sprintf("%.1f/%.1f/%.1f", round10(float64(r.min)), round(float64(r.sum)/10.0/float64(r.count)), round10(float64(r.max)))
+func (r *Result) String() string {
+	return fmt.Sprintf("%.1f/%.1f/%.1f", round(float64(r.min)/10.0), r.average(), round(float64(r.max)/10.0)) //, r.sum, r.count)
 }
 
-func round(value float64) float64 {
-	return math.Round(value*10.0) / 10.0
+func (r Result) average() float64 {
+	// return round(float64(r.sum/r.count) / 10.0)
+	return round(float64(r.sum) / 10.0 / float64(r.count))
 }
-func round10(value float64) float64 {
-	return math.Round(value) / 10.0
+
+func round(x float64) float64 {
+	return roundJava(x*10.0) / 10.0
+}
+
+// roundJava returns the closest integer to the argument, with ties
+// rounding to positive infinity, see java's Math.round
+func roundJava(x float64) float64 {
+	t := math.Trunc(x)
+	if x < 0.0 && t-x == 0.5 {
+		//return t
+	} else if math.Abs(x-t) >= 0.5 {
+		t += math.Copysign(1, x)
+	}
+
+	if t == 0 { // check -0
+		return 0.0
+	}
+	return t
 }
 
 func main() {
@@ -80,7 +98,7 @@ func printResults(results map[string]*Result) {
 	sort.Strings(keys)
 
 	for _, k := range keys {
-		fmt.Printf("%s=%s\n", k, *results[k])
+		fmt.Printf("%s=%s\n", k, results[k])
 	}
 }
 
@@ -99,10 +117,14 @@ func aggregateLine(results map[string]*Result, name string, temp int16) {
 func processLine(line string) (string, int16) {
 	// fmt.Println(line)
 	parts := strings.Split(line, ";")
-	tempStr := strings.Split(parts[1], ".")
-	temp, err := strconv.Atoi(tempStr[0] + tempStr[1])
+	temp, err := parseTemp(parts[1])
 	if err != nil {
 		log.Fatal(err)
 	}
 	return parts[0], int16(temp)
+}
+
+func parseTemp(value string) (int, error) {
+	tempStr := strings.Split(value, ".")
+	return strconv.Atoi(tempStr[0] + tempStr[1])
 }

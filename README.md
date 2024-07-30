@@ -26,5 +26,5 @@ Reading only using Scanner with defaults, took ~23s.
 
 | Change | Timing |
 | --- | --- |
-| Initial basline  | ??? |
+| Initial basline, singlethread  | 2m 57s |
 |  |  |
