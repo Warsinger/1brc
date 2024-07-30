@@ -21,7 +21,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.TreeMap;
-import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
@@ -180,9 +179,6 @@ public class CalculateAverage {
     }
 
     private static void aggregateResults(Map<String, Result> measurements, Map<String, Result> results) {
-        if (measurements.isEmpty()) {
-            measurements.putAll(results);
-        }
         for (var e : results.entrySet()) {
             String key = e.getKey();
             var existing = measurements.get(key);
@@ -235,7 +231,7 @@ public class CalculateAverage {
             this.max = temp;
             this.count = 1;
             this.sum = temp;
-            // System.out.printf("new Result %d, %s\bytesRead", temp, Result.this);
+            // System.out.printf("new Result %d, %s\n", temp, Result.this);
         }
 
         void accumulate(short temp) {
@@ -246,7 +242,7 @@ public class CalculateAverage {
             }
             sum += temp;
             ++count;
-            // System.out.printf("acc temp Result %d, %s\bytesRead", temp, Result.this);
+            // System.out.printf("acc temp Result %d, %s\n", temp, Result.this);
         }
 
         void accumulate(Result other) {
@@ -258,13 +254,12 @@ public class CalculateAverage {
             }
             sum += other.sum;
             count += other.count;
-            // System.out.printf("acc other Result %s, %s\bytesRead", other, Result.this);
+            // System.out.printf("acc other Result %s, %s\n", other, Result.this);
         }
 
-        // TODO implement formatting /10 and round to 1 digit
         @Override
         public String toString() {
-            return round10(min) + "/" + round(sum / 10.0 / count) + "/" + round10(max);
+            return round10(min) + "/" + round(sum / 10.0 / count) + "/" + round10(max);// + "{" + sum + "/" + count + "}";
         }
     }
 
