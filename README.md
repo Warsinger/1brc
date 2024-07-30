@@ -22,6 +22,8 @@ Timings are on Apple MBPro M1 16GB RAM
 
 ## Go
 
+Reading only using Scanner with defaults, took ~23s.
+
 | Change | Timing |
 | --- | --- |
 | Initial basline  | ??? |
