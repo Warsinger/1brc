@@ -152,23 +152,17 @@ func processFile(file *os.File) error {
 
 func aggregateResults(chunkChannel, aggChannel chan map[string]*Result) {
 	results := make(map[string]*Result, 10000)
-	for count := 0; ; count++ {
-		chunkResults, ok := <-chunkChannel
-		if ok {
-			// fmt.Printf("agg chunk %d of size %d\n", count, len(chunkResults))
-			for station, chunkResult := range chunkResults {
-				result, ok := results[station]
-				if !ok {
-					results[station] = chunkResult
-					// fmt.Printf("new result %v %v\n", temp, result)
-				} else {
-					result.accumulateResult(chunkResult)
-					// fmt.Printf("existing result %v %v\n", temp, result)
-				}
-
+	for chunkResults := range chunkChannel {
+		// fmt.Printf("agg chunk %d of size %d\n", count, len(chunkResults))
+		for station, chunkResult := range chunkResults {
+			result, ok := results[station]
+			if !ok {
+				results[station] = chunkResult
+				// fmt.Printf("new result %v %v\n", temp, result)
+			} else {
+				result.accumulateResult(chunkResult)
+				// fmt.Printf("existing result %v %v\n", temp, result)
 			}
-		} else {
-			break
 		}
 	}
 
