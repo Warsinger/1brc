@@ -28,7 +28,7 @@ func NewResult(temp int16) *Result {
 func (result *Result) accumulateResult(other *Result) {
 	if other.min < result.min {
 		result.min = other.min
-	} else if other.max > result.min {
+	} else if other.max > result.max {
 		result.max = other.max
 	}
 	result.sum += other.sum
