@@ -2,12 +2,14 @@ package main
 
 import (
 	"bufio"
+	"flag"
 	"fmt"
 	"io"
 	"log"
 	"math"
 	"os"
 	"runtime"
+	"runtime/pprof"
 	"sort"
 	"strconv"
 	"strings"
@@ -75,8 +77,22 @@ func roundJava(x float64) float64 {
 }
 
 func main() {
-	fileName := os.Args[1]
-	file, err := os.Open(fileName)
+	cpuprofile := flag.String("cpuprofile", "", "write cpu profile to file")
+	fileName := flag.String("file", "", "path to measurements file")
+	flag.Parse()
+	if *cpuprofile != "" {
+		f, err := os.Create(*cpuprofile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		pprof.StartCPUProfile(f)
+		defer pprof.StopCPUProfile()
+	}
+	if *fileName == "" {
+		log.Fatal("Filename not specified")
+	}
+
+	file, err := os.Open(*fileName)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -88,7 +104,7 @@ func main() {
 	}
 }
 
-const READ_SIZE = 8192 //* 8192
+const READ_SIZE = 4096 * 8192
 const EOL byte = '\n'
 
 func processFile(file *os.File) error {
@@ -151,7 +167,7 @@ func processFile(file *os.File) error {
 }
 
 func aggregateResults(chunkChannel, aggChannel chan map[string]*Result) {
-	results := make(map[string]*Result, 10000)
+	results := make(map[string]*Result, 100000)
 	for chunkResults := range chunkChannel {
 		// fmt.Printf("agg chunk %d of size %d\n", count, len(chunkResults))
 		for station, chunkResult := range chunkResults {
@@ -177,7 +193,7 @@ const (
 )
 
 func processChunk(chunk []byte) map[string]*Result {
-	results := make(map[string]*Result, 1000)
+	results := make(map[string]*Result, 10000)
 
 	for lineIdx, chunkSize := 0, len(chunk); lineIdx < chunkSize; {
 
@@ -207,7 +223,6 @@ func processChunk(chunk []byte) map[string]*Result {
 }
 
 func printResults(results map[string]*Result) {
-
 	keys := make([]string, 0, len(results))
 
 	for k := range results {

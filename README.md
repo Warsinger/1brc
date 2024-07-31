@@ -28,4 +28,5 @@ Reading 64MB chunks at a time is ~3s
 | Change | Timing |
 | --- | --- |
 | Initial basline, singlethread  | 2m 57s |
-|  |  |
+| First pass threadding and channelsl; read size 64mb| 10.25 |
+| Read size 32mb | 9.8s |
