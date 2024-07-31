@@ -123,10 +123,10 @@ func processFile(file *os.File) error {
 
 	for {
 		// make slice a little bigger than what we actually read so we can read to next end of line without reallocation
-		buf := make([]byte, READ_SIZE, READ_SIZE+265)
+		chunk := make([]byte, READ_SIZE, READ_SIZE+128)
 
-		n, err := r.Read(buf)
-		buf = buf[:n]
+		n, err := r.Read(chunk)
+		chunk = chunk[:n]
 
 		if n == 0 {
 			if err == io.EOF {
@@ -143,14 +143,14 @@ func processFile(file *os.File) error {
 		nextUntillNewline, err := r.ReadBytes(EOL)
 		// fmt.Printf("%d bytes till new line\n", len(nextUntillNewline))
 		if err != io.EOF {
-			buf = append(buf, nextUntillNewline...)
+			chunk = append(chunk, nextUntillNewline...)
 		}
 
 		semaphore <- struct{}{}
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			chunkChannel <- processChunk(buf)
+			chunkChannel <- processChunk(chunk)
 			<-semaphore
 		}()
 	}
