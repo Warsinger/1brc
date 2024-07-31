@@ -93,10 +93,15 @@ const EOL byte = '\n'
 
 func processFile(file *os.File) error {
 	r := bufio.NewReaderSize(file, READ_SIZE)
+	// control # of threads base on cores
 	cores := runtime.NumCPU()
 	semaphore := make(chan struct{}, cores)
-	resultsChannel := make(chan map[string]*Result, cores)
-	defer close(resultsChannel)
+	chunkChannel := make(chan map[string]*Result, cores)
+
+	// start listening to channel before we start pushing to it
+	aggChannel := make(chan map[string]*Result, 1)
+	defer close(aggChannel)
+	go aggregateResults(chunkChannel, aggChannel)
 
 	var wg sync.WaitGroup
 
@@ -108,17 +113,19 @@ func processFile(file *os.File) error {
 		buf = buf[:n]
 
 		if n == 0 {
+			if err == io.EOF {
+				break
+			}
 			if err != nil {
 				fmt.Println(err)
 				break
 			}
-			if err == io.EOF {
-				break
-			}
 			return err
+			// } else {
+			// 	fmt.Printf("read %d bytes\n", n)
 		}
 		nextUntillNewline, err := r.ReadBytes(EOL)
-
+		// fmt.Printf("%d bytes till new line\n", len(nextUntillNewline))
 		if err != io.EOF {
 			buf = append(buf, nextUntillNewline...)
 		}
@@ -127,37 +134,45 @@ func processFile(file *os.File) error {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			resultsChannel <- processChunk(buf)
+			chunkChannel <- processChunk(buf)
 			<-semaphore
 		}()
 	}
-
+	// fmt.Println("all reading done")
 	wg.Wait()
-
-	results := aggregateResults(resultsChannel)
+	close(chunkChannel)
+	close(semaphore)
+	// fmt.Println("all processing done")
+	results := <-aggChannel
 
 	printResults(results)
 
 	return nil
 }
 
-func aggregateResults(resultsChannel chan map[string]*Result) map[string]*Result {
+func aggregateResults(chunkChannel, aggChannel chan map[string]*Result) {
 	results := make(map[string]*Result, 10000)
-	for chunkResults := range resultsChannel {
-		for station, chunkResult := range chunkResults {
-			result, ok := results[station]
-			if !ok {
-				results[station] = chunkResult
-				// fmt.Printf("new result %v %v\n", temp, result)
-			} else {
-				result.accumulateResult(chunkResult)
-				// fmt.Printf("existing result %v %v\n", temp, result)
+	for count := 0; ; count++ {
+		chunkResults, ok := <-chunkChannel
+		if ok {
+			// fmt.Printf("agg chunk %d of size %d\n", count, len(chunkResults))
+			for station, chunkResult := range chunkResults {
+				result, ok := results[station]
+				if !ok {
+					results[station] = chunkResult
+					// fmt.Printf("new result %v %v\n", temp, result)
+				} else {
+					result.accumulateResult(chunkResult)
+					// fmt.Printf("existing result %v %v\n", temp, result)
+				}
+
 			}
+		} else {
+			break
 		}
 	}
-	// sort
 
-	return results
+	aggChannel <- results
 }
 
 const (
@@ -193,6 +208,7 @@ func processChunk(chunk []byte) map[string]*Result {
 		}
 	}
 
+	// fmt.Printf("chunk results size %d\n", len(results))
 	return results
 }
 

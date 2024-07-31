@@ -6,7 +6,7 @@ import (
 )
 
 // There's some weird stuff going on here with rounding based on whether the data is in the struct or not
-func main() {
+func main1() {
 	// var sum int = -1863
 	// var count int = 6
 	var sum int = -1534
