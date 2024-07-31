@@ -23,6 +23,7 @@ Timings are on Apple MBPro M1 16GB RAM
 ## Go
 
 Reading only using Scanner with defaults, took ~23s.
+Reading 64MB chunks at a time is ~3s
 
 | Change | Timing |
 | --- | --- |

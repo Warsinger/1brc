@@ -3,12 +3,15 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"log"
 	"math"
 	"os"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 type Result struct {
@@ -22,15 +25,15 @@ func NewResult(temp int16) *Result {
 	return &Result{temp, temp, int64(temp), 1}
 }
 
-// func (result *Result) aggregate(other *Result) {
-// 	if other.min < result.min {
-// 		result.min = other.min
-// 	} else if other.max > result.min {
-// 		result.max = other.max
-// 	}
-// 	result.sum += other.sum
-// 	result.count += other.count
-// }
+func (result *Result) accumulateResult(other *Result) {
+	if other.min < result.min {
+		result.min = other.min
+	} else if other.max > result.min {
+		result.max = other.max
+	}
+	result.sum += other.sum
+	result.count += other.count
+}
 
 func (r *Result) addTemp(temp int16) {
 	if temp < r.min {
@@ -41,6 +44,7 @@ func (r *Result) addTemp(temp int16) {
 	r.sum += int64(temp)
 	r.count++
 }
+
 func (r *Result) String() string {
 	return fmt.Sprintf("%.1f/%.1f/%.1f", round(float64(r.min)/10.0), r.average(), round(float64(r.max)/10.0)) //, r.sum, r.count)
 }
@@ -78,14 +82,118 @@ func main() {
 	}
 	defer file.Close()
 
-	results := make(map[string]*Result, 10)
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		name, temp := processLine(scanner.Text())
-		aggregateLine(results, name, temp)
+	err = processFile(file)
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+const READ_SIZE = 8192 //* 8192
+const EOL byte = '\n'
+
+func processFile(file *os.File) error {
+	r := bufio.NewReaderSize(file, READ_SIZE)
+	cores := runtime.NumCPU()
+	semaphore := make(chan struct{}, cores)
+	resultsChannel := make(chan map[string]*Result, cores)
+	defer close(resultsChannel)
+
+	var wg sync.WaitGroup
+
+	for {
+		// make slice a little bigger than what we actually read so we can read to next end of line without reallocation
+		buf := make([]byte, READ_SIZE, READ_SIZE+265)
+
+		n, err := r.Read(buf)
+		buf = buf[:n]
+
+		if n == 0 {
+			if err != nil {
+				fmt.Println(err)
+				break
+			}
+			if err == io.EOF {
+				break
+			}
+			return err
+		}
+		nextUntillNewline, err := r.ReadBytes(EOL)
+
+		if err != io.EOF {
+			buf = append(buf, nextUntillNewline...)
+		}
+
+		semaphore <- struct{}{}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			resultsChannel <- processChunk(buf)
+			<-semaphore
+		}()
 	}
 
+	wg.Wait()
+
+	results := aggregateResults(resultsChannel)
+
 	printResults(results)
+
+	return nil
+}
+
+func aggregateResults(resultsChannel chan map[string]*Result) map[string]*Result {
+	results := make(map[string]*Result, 10000)
+	for chunkResults := range resultsChannel {
+		for station, chunkResult := range chunkResults {
+			result, ok := results[station]
+			if !ok {
+				results[station] = chunkResult
+				// fmt.Printf("new result %v %v\n", temp, result)
+			} else {
+				result.accumulateResult(chunkResult)
+				// fmt.Printf("existing result %v %v\n", temp, result)
+			}
+		}
+	}
+	// sort
+
+	return results
+}
+
+const (
+	SEMICOLON byte = ';'
+	DASH      byte = '-'
+	DOT       byte = '.'
+	ZERO      byte = '0'
+)
+
+func processChunk(chunk []byte) map[string]*Result {
+	results := make(map[string]*Result, 1000)
+
+	for lineIdx, chunkSize := 0, len(chunk); lineIdx < chunkSize; {
+
+		nameStart := lineIdx
+		nameIdx := lineIdx
+		for ; nameIdx < chunkSize && chunk[nameIdx] != SEMICOLON; nameIdx++ {
+
+		}
+		station := string(chunk[nameStart:nameIdx])
+		tempStart := nameIdx + 1
+		tempIdx := tempStart
+		for ; tempIdx <= chunkSize && chunk[tempIdx] != EOL; tempIdx++ {
+
+		}
+		temp := parseNumber(chunk[tempStart:tempIdx])
+		lineIdx = tempIdx + 1
+		result, ok := results[station]
+		if ok {
+			result.addTemp(temp)
+		} else {
+			results[station] = NewResult(temp)
+		}
+	}
+
+	return results
 }
 
 func printResults(results map[string]*Result) {
@@ -102,29 +210,55 @@ func printResults(results map[string]*Result) {
 	}
 }
 
-func aggregateLine(results map[string]*Result, name string, temp int16) {
-	result, ok := results[name]
-	if !ok {
-		result = NewResult(temp)
-		results[name] = result
-		// fmt.Printf("new result %v %v\n", temp, result)
-	} else {
-		result.addTemp(temp)
-		// fmt.Printf("existing result %v %v\n", temp, result)
-	}
-}
+// func aggregateLine(results map[string]*Result, name string, temp int16) {
+// 	result, ok := results[name]
+// 	if !ok {
+// 		result = NewResult(temp)
+// 		results[name] = result
+// 		// fmt.Printf("new result %v %v\n", temp, result)
+// 	} else {
+// 		result.addTemp(temp)
+// 		// fmt.Printf("existing result %v %v\n", temp, result)
+// 	}
+// }
 
-func processLine(line string) (string, int16) {
-	// fmt.Println(line)
-	parts := strings.Split(line, ";")
-	temp, err := parseTemp(parts[1])
-	if err != nil {
-		log.Fatal(err)
-	}
-	return parts[0], int16(temp)
-}
+// func processLine(line string) (string, int16) {
+// 	// fmt.Println(line)
+// 	parts := strings.Split(line, ";")
+// 	temp, err := parseTemp(parts[1])
+// 	if err != nil {
+// 		log.Fatal(err)
+// 	}
+// 	return parts[0], int16(temp)
+// }
 
 func parseTemp(value string) (int, error) {
 	tempStr := strings.Split(value, ".")
 	return strconv.Atoi(tempStr[0] + tempStr[1])
+}
+
+// assumes the slice is just the right length
+func parseNumber(chunk []byte) int16 {
+	tempIdx := 0
+	var isNegative = false
+	if chunk[tempIdx] == DASH {
+		isNegative = true
+		tempIdx++
+	}
+
+	sum := int16(0)
+	if chunk[tempIdx+1] == DOT {
+		// single digit number
+		sum = int16((chunk[tempIdx] - ZERO)) * 10
+		tempIdx += 2
+	} else {
+		// 2 digit number
+		sum = int16((chunk[tempIdx]-ZERO))*100 + int16((chunk[tempIdx+1])-ZERO)*10
+		tempIdx += 3
+	}
+	sum += int16(chunk[tempIdx] - ZERO)
+	if isNegative {
+		sum = -sum
+	}
+	return sum
 }

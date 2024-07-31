@@ -22,6 +22,14 @@ func main() {
 
 	avg = average2(sum, count)
 	fmt.Printf("avg plain2 %.2f\n", avg)
+
+	b := make([]byte, 50)
+	for i := 0; i < len(b); i++ {
+		b[i] = byte(i) + 45
+	}
+	bx := b[4:10]
+	fmt.Printf("b %v\n", string(b))
+	fmt.Printf("bx %v %v %v\n", cap(bx), len(bx), bx)
 }
 
 func (r *Result) average() float64 {
