@@ -123,11 +123,11 @@ func processFile(file *os.File) error {
 		log.Fatalf("Mmap: %v", err)
 	}
 
-	// defer func() {
-	// 	if err := syscall.Munmap(filedata); err != nil {
-	// 		log.Fatalf("Munmap: %v", err)
-	// 	}
-	// }()
+	defer func() {
+		if err := syscall.Munmap(filedata); err != nil {
+			log.Fatalf("Munmap: %v", err)
+		}
+	}()
 
 	// control # of threads base on cores
 	cores := runtime.NumCPU()
