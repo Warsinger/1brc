@@ -16,6 +16,15 @@ import (
 	"sync"
 )
 
+const (
+	READ_SIZE      = 4096 * 8192
+	EOL       byte = '\n'
+	SEMICOLON byte = ';'
+	DASH      byte = '-'
+	DOT       byte = '.'
+	ZERO      byte = '0'
+)
+
 type Result struct {
 	min   int16
 	max   int16
@@ -104,9 +113,6 @@ func main() {
 	}
 }
 
-const READ_SIZE = 4096 * 8192
-const EOL byte = '\n'
-
 func processFile(file *os.File) error {
 	r := bufio.NewReaderSize(file, READ_SIZE)
 	// control # of threads base on cores
@@ -185,13 +191,6 @@ func aggregateResults(chunkChannel, aggChannel chan map[string]*Result) {
 	aggChannel <- results
 }
 
-const (
-	SEMICOLON byte = ';'
-	DASH      byte = '-'
-	DOT       byte = '.'
-	ZERO      byte = '0'
-)
-
 func processChunk(chunk []byte) map[string]*Result {
 	results := make(map[string]*Result, 10000)
 
@@ -234,28 +233,6 @@ func printResults(results map[string]*Result) {
 		fmt.Printf("%s=%s\n", k, results[k])
 	}
 }
-
-// func aggregateLine(results map[string]*Result, name string, temp int16) {
-// 	result, ok := results[name]
-// 	if !ok {
-// 		result = NewResult(temp)
-// 		results[name] = result
-// 		// fmt.Printf("new result %v %v\n", temp, result)
-// 	} else {
-// 		result.addTemp(temp)
-// 		// fmt.Printf("existing result %v %v\n", temp, result)
-// 	}
-// }
-
-// func processLine(line string) (string, int16) {
-// 	// fmt.Println(line)
-// 	parts := strings.Split(line, ";")
-// 	temp, err := parseTemp(parts[1])
-// 	if err != nil {
-// 		log.Fatal(err)
-// 	}
-// 	return parts[0], int16(temp)
-// }
 
 func parseTemp(value string) (int, error) {
 	tempStr := strings.Split(value, ".")
