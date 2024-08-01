@@ -31,3 +31,4 @@ Reading 64MB chunks at a time is ~3s
 | First pass threadding and channelsl; read size 64mb| 10.25 |
 | Read size 32mb | 9.8s |
 | ~~chunks yield arrays rather than maps~~ | 1m 9s |
+| ~~read via memory mapping ~~ | 29s |
