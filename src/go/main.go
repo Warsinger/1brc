@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"flag"
 	"fmt"
 	"io"
@@ -210,7 +209,7 @@ func processChunk(data []byte) map[string]*Result {
 		entry := &entries[i]
 
 		// bytes.Equal could be commented to speedup assuming no hash collisions
-		for entry.vlen > 0 && !(entry.hash == hash && bytes.Equal(entry.value[:entry.vlen], value)) {
+		for entry.vlen > 0 && !(entry.hash == hash) { // && bytes.Equal(entry.value[:entry.vlen], value)) {
 			i = (i + 1) & uint64(entriesSize-1)
 			entry = &entries[i]
 		}
