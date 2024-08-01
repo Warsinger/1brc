@@ -33,3 +33,4 @@ Reading 64MB chunks at a time is ~3s
 | ~~chunks yield arrays rather than maps~~ | 1m 9s |
 | ~~read via memory mapping ~~ | 29s |
 | ~~read results into arrays rather than channels ~~ | 10.8s |
+| process chunk using custom hashing from [official repo go submission](https://github.com/gunnarmorling/1brc/blob/4daeb94b048e074c2b80aac1074b68eb92285ea8/src/main/go/AlexanderYastrebov/calc.go#L132) | 5.1s |

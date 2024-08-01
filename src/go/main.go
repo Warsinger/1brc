@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"flag"
 	"fmt"
 	"io"
@@ -44,16 +45,6 @@ func (result *Result) accumulateResult(other *Result) {
 	}
 	result.sum += other.sum
 	result.count += other.count
-}
-
-func (r *Result) addTemp(temp int16) {
-	if temp < r.min {
-		r.min = temp
-	} else if temp > r.max {
-		r.max = temp
-	}
-	r.sum += int64(temp)
-	r.count++
 }
 
 func (r *Result) String() string {
@@ -191,34 +182,114 @@ func aggregateResults(chunkChannel, aggChannel chan map[string]*Result) {
 	aggChannel <- results
 }
 
-func processChunk(chunk []byte) map[string]*Result {
-	results := make(map[string]*Result, 10000)
+// custom hashing to speed things up copied from https://github.com/gunnarmorling/1brc/blob/4daeb94b048e074c2b80aac1074b68eb92285ea8/src/main/go/AlexanderYastrebov/calc.go#L132
+func processChunk(data []byte) map[string]*Result {
+	// Use fixed size linear probe lookup table
+	const (
+		// use power of 2 for fast modulo calculation,
+		// should be larger than max number of keys which is 10_000
+		entriesSize = 1 << 14
 
-	for lineIdx, chunkSize := 0, len(chunk); lineIdx < chunkSize; {
+		// use FNV-1a hash
+		fnv1aOffset64 = 14695981039346656037
+		fnv1aPrime64  = 1099511628211
+	)
 
-		nameStart := lineIdx
-		nameIdx := lineIdx
-		for ; nameIdx < chunkSize && chunk[nameIdx] != SEMICOLON; nameIdx++ {
+	type entry struct {
+		m     Result
+		hash  uint64
+		vlen  int
+		value [128]byte // use power of 2 > 100 for alignment
+	}
+	entries := make([]entry, entriesSize)
+	entriesCount := 0
 
+	// keep short and inlinable
+	getResult := func(hash uint64, value []byte) *Result {
+		i := hash & uint64(entriesSize-1)
+		entry := &entries[i]
+
+		// bytes.Equal could be commented to speedup assuming no hash collisions
+		for entry.vlen > 0 && !(entry.hash == hash && bytes.Equal(entry.value[:entry.vlen], value)) {
+			i = (i + 1) & uint64(entriesSize-1)
+			entry = &entries[i]
 		}
-		station := string(chunk[nameStart:nameIdx])
-		tempStart := nameIdx + 1
-		tempIdx := tempStart
-		for ; tempIdx <= chunkSize && chunk[tempIdx] != EOL; tempIdx++ {
 
+		if entry.vlen == 0 {
+			entry.hash = hash
+			entry.vlen = copy(entry.value[:], value)
+			entriesCount++
 		}
-		temp := parseNumber(chunk[tempStart:tempIdx])
-		lineIdx = tempIdx + 1
-		result, ok := results[station]
-		if ok {
-			result.addTemp(temp)
+		return &entry.m
+	}
+
+	// assume valid input
+	for len(data) > 0 {
+
+		idHash := uint64(fnv1aOffset64)
+		semiPos := 0
+		for i, b := range data {
+			if b == ';' {
+				semiPos = i
+				break
+			}
+
+			// calculate FNV-1a hash
+			idHash ^= uint64(b)
+			idHash *= fnv1aPrime64
+		}
+
+		idData := data[:semiPos]
+
+		data = data[semiPos+1:]
+
+		var temp int16
+		// parseNumber
+		{
+			negative := data[0] == '-'
+			if negative {
+				data = data[1:]
+			}
+
+			_ = data[3]
+			if data[1] == '.' {
+				// 1.2\n
+				temp = int16(data[0])*10 + int16(data[2]) - '0'*(10+1)
+				data = data[4:]
+				// 12.3\n
+			} else {
+				_ = data[4]
+				temp = int16(data[0])*100 + int16(data[1])*10 + int16(data[3]) - '0'*(100+10+1)
+				data = data[5:]
+			}
+
+			if negative {
+				temp = -temp
+			}
+		}
+
+		m := getResult(idHash, idData)
+		if m.count == 0 {
+			m.min = temp
+			m.max = temp
+			m.sum = int64(temp)
+			m.count = 1
 		} else {
-			results[station] = NewResult(temp)
+			m.min = min(m.min, temp)
+			m.max = max(m.max, temp)
+			m.sum += int64(temp)
+			m.count++
 		}
 	}
 
-	// fmt.Printf("chunk results size %d\n", len(results))
-	return results
+	result := make(map[string]*Result, entriesCount)
+	for i := range entries {
+		entry := &entries[i]
+		if entry.m.count > 0 {
+			result[string(entry.value[:entry.vlen])] = &entry.m
+		}
+	}
+	return result
 }
 
 func printResults(results map[string]*Result) {
@@ -237,30 +308,4 @@ func printResults(results map[string]*Result) {
 func parseTemp(value string) (int, error) {
 	tempStr := strings.Split(value, ".")
 	return strconv.Atoi(tempStr[0] + tempStr[1])
-}
-
-// assumes the slice is just the right length
-func parseNumber(chunk []byte) int16 {
-	tempIdx := 0
-	var isNegative = false
-	if chunk[tempIdx] == DASH {
-		isNegative = true
-		tempIdx++
-	}
-
-	sum := int16(0)
-	if chunk[tempIdx+1] == DOT {
-		// single digit number
-		sum = int16((chunk[tempIdx] - ZERO)) * 10
-		tempIdx += 2
-	} else {
-		// 2 digit number
-		sum = int16((chunk[tempIdx]-ZERO))*100 + int16((chunk[tempIdx+1])-ZERO)*10
-		tempIdx += 3
-	}
-	sum += int16(chunk[tempIdx] - ZERO)
-	if isNegative {
-		sum = -sum
-	}
-	return sum
 }
