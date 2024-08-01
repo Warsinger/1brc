@@ -32,3 +32,4 @@ Reading 64MB chunks at a time is ~3s
 | Read size 32mb | 9.8s |
 | ~~chunks yield arrays rather than maps~~ | 1m 9s |
 | ~~read via memory mapping ~~ | 29s |
+| ~~read results into arrays rather than channels ~~ | 10.8s |
