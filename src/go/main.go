@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	"log"
@@ -118,77 +119,72 @@ func processFile(file *os.File) error {
 		return err
 	}
 	size := fi.Size()
-	filedata, err := syscall.Mmap(int(file.Fd()), 0, int(size), syscall.PROT_READ, syscall.MAP_SHARED)
+	data, err := syscall.Mmap(int(file.Fd()), 0, int(size), syscall.PROT_READ, syscall.MAP_SHARED)
 	if err != nil {
 		log.Fatalf("Mmap: %v", err)
 	}
 
 	defer func() {
-		if err := syscall.Munmap(filedata); err != nil {
+		if err := syscall.Munmap(data); err != nil {
 			log.Fatalf("Munmap: %v", err)
 		}
 	}()
 
-	// control # of threads base on cores
-	cores := runtime.NumCPU()
-	semaphore := make(chan struct{}, cores)
-	chunkChannel := make(chan map[string]*Result, cores)
+	// one chunk per core
+	chunkCount := runtime.NumCPU()
+	chunkSize := len(data) / chunkCount
+	if chunkSize == 0 {
+		chunkSize = len(data)
+	}
 
-	// start listening to channel before we start pushing to it
-	aggChannel := make(chan map[string]*Result, 1)
-	defer close(aggChannel)
-	go aggregateResults(chunkChannel, aggChannel)
-
-	var wg sync.WaitGroup
-
-	data := filedata
-	for {
-		// make slice a little bigger than what we actually read so we can read to next end of line without reallocation
-		var n int = len(data)
-		if n > READ_SIZE {
-			n = READ_SIZE
-		}
-		//chunk := data[:]
-		// find EOL
-		for n < len(data) {
-			if data[n] != EOL {
-				n++
-			} else {
-				break
-			}
-		}
-		chunk := data[:n]
-		n++
-		if n >= len(data) {
+	chunks := make([]int, 0, chunkCount)
+	offset := 0
+	// find EOL
+	for offset < len(data) {
+		offset += chunkSize
+		if offset >= len(data) {
+			// next chunk extends past end of file
+			chunks = append(chunks, len(data))
 			break
 		}
-		data = data[n:]
+		eol := bytes.IndexByte(data[offset:], EOL)
+		if eol == -1 {
+			// no EOL so go to end of file
+			chunks = append(chunks, len(data))
+		} else {
+			// chunk ends at EOL
+			offset += eol + 1
+			chunks = append(chunks, offset)
+		}
+	}
 
-		semaphore <- struct{}{}
-		wg.Add(1)
-		go func() {
+	var wg sync.WaitGroup
+	wg.Add(len(chunks))
+	chunkResults := make([]map[string]*Result, len(chunks))
+	start := 0
+	for i, chunkOffset := range chunks {
+		go func(chunk []byte) {
 			defer wg.Done()
-			chunkChannel <- processChunk(chunk)
-			<-semaphore
-		}()
+			chunkResults[i] = processChunk(chunk)
+		}(data[start:chunkOffset])
+		start = chunkOffset
 	}
 	// fmt.Println("all reading done")
 	wg.Wait()
-	close(chunkChannel)
-	close(semaphore)
 	// fmt.Println("all processing done")
-	results := <-aggChannel
+	results := aggregateResults(chunkResults)
 
 	printResults(results)
 
 	return nil
 }
 
-func aggregateResults(chunkChannel, aggChannel chan map[string]*Result) {
+func aggregateResults(chunkResults []map[string]*Result) map[string]*Result {
 	results := make(map[string]*Result, 100000)
-	for chunkResults := range chunkChannel {
+
+	for _, chunkResult := range chunkResults {
 		// fmt.Printf("agg chunk %d of size %d\n", count, len(chunkResults))
-		for station, chunkResult := range chunkResults {
+		for station, chunkResult := range chunkResult {
 			result, ok := results[station]
 			if !ok {
 				results[station] = chunkResult
@@ -200,7 +196,7 @@ func aggregateResults(chunkChannel, aggChannel chan map[string]*Result) {
 		}
 	}
 
-	aggChannel <- results
+	return results
 }
 
 func processChunk(chunk []byte) map[string]*Result {
