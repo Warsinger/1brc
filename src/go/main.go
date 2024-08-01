@@ -31,6 +31,7 @@ type Result struct {
 	sum   int64
 	count int
 }
+type ResultMap map[string]*Result
 
 func NewResult(temp int16) *Result {
 	return &Result{temp, temp, int64(temp), 1}
@@ -114,20 +115,28 @@ func main() {
 }
 
 func processFile(file *os.File) error {
+	fi, err := file.Stat()
+	if err != nil {
+		return err
+	}
+
+	size := fi.Size()
+
+	chunkCount := int(size / READ_SIZE)
+	chunkMod := size % READ_SIZE
+	if chunkMod > 0 {
+		chunkCount++
+	}
+	chunkResults := make([]ResultMap, chunkCount)
+
 	r := bufio.NewReaderSize(file, READ_SIZE)
 	// control # of threads base on cores
 	cores := runtime.NumCPU()
 	semaphore := make(chan struct{}, cores)
-	chunkChannel := make(chan map[string]*Result, cores)
-
-	// start listening to channel before we start pushing to it
-	aggChannel := make(chan map[string]*Result, 1)
-	defer close(aggChannel)
-	go aggregateResults(chunkChannel, aggChannel)
 
 	var wg sync.WaitGroup
 
-	for {
+	for i := 0; i < chunkCount; i++ {
 		// make slice a little bigger than what we actually read so we can read to next end of line without reallocation
 		chunk := make([]byte, READ_SIZE, READ_SIZE+128)
 
@@ -156,25 +165,25 @@ func processFile(file *os.File) error {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			chunkChannel <- processChunk(chunk)
+			chunkResults[i] = processChunk(chunk)
 			<-semaphore
 		}()
 	}
 	// fmt.Println("all reading done")
 	wg.Wait()
-	close(chunkChannel)
+
 	close(semaphore)
 	// fmt.Println("all processing done")
-	results := <-aggChannel
+	results := aggregateResults(chunkResults)
 
 	printResults(results)
 
 	return nil
 }
 
-func aggregateResults(chunkChannel, aggChannel chan map[string]*Result) {
-	results := make(map[string]*Result, 100000)
-	for chunkResults := range chunkChannel {
+func aggregateResults(chunksResults []ResultMap) ResultMap {
+	results := make(ResultMap, 100000)
+	for _, chunkResults := range chunksResults {
 		// fmt.Printf("agg chunk %d of size %d\n", count, len(chunkResults))
 		for station, chunkResult := range chunkResults {
 			result, ok := results[station]
@@ -188,11 +197,11 @@ func aggregateResults(chunkChannel, aggChannel chan map[string]*Result) {
 		}
 	}
 
-	aggChannel <- results
+	return results
 }
 
-func processChunk(chunk []byte) map[string]*Result {
-	results := make(map[string]*Result, 10000)
+func processChunk(chunk []byte) ResultMap {
+	results := make(ResultMap, 10000)
 
 	for lineIdx, chunkSize := 0, len(chunk); lineIdx < chunkSize; {
 
@@ -221,7 +230,7 @@ func processChunk(chunk []byte) map[string]*Result {
 	return results
 }
 
-func printResults(results map[string]*Result) {
+func printResults(results ResultMap) {
 	keys := make([]string, 0, len(results))
 
 	for k := range results {
