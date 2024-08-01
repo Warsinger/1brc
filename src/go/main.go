@@ -1,10 +1,8 @@
 package main
 
 import (
-	"bufio"
 	"flag"
 	"fmt"
-	"io"
 	"log"
 	"math"
 	"os"
@@ -14,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 )
 
 const (
@@ -114,7 +113,22 @@ func main() {
 }
 
 func processFile(file *os.File) error {
-	r := bufio.NewReaderSize(file, READ_SIZE)
+	fi, err := file.Stat()
+	if err != nil {
+		return err
+	}
+	size := fi.Size()
+	filedata, err := syscall.Mmap(int(file.Fd()), 0, int(size), syscall.PROT_READ, syscall.MAP_SHARED)
+	if err != nil {
+		log.Fatalf("Mmap: %v", err)
+	}
+
+	// defer func() {
+	// 	if err := syscall.Munmap(filedata); err != nil {
+	// 		log.Fatalf("Munmap: %v", err)
+	// 	}
+	// }()
+
 	// control # of threads base on cores
 	cores := runtime.NumCPU()
 	semaphore := make(chan struct{}, cores)
@@ -127,30 +141,28 @@ func processFile(file *os.File) error {
 
 	var wg sync.WaitGroup
 
+	data := filedata
 	for {
 		// make slice a little bigger than what we actually read so we can read to next end of line without reallocation
-		chunk := make([]byte, READ_SIZE, READ_SIZE+128)
-
-		n, err := r.Read(chunk)
-		chunk = chunk[:n]
-
-		if n == 0 {
-			if err == io.EOF {
+		var n int = len(data)
+		if n > READ_SIZE {
+			n = READ_SIZE
+		}
+		//chunk := data[:]
+		// find EOL
+		for n < len(data) {
+			if data[n] != EOL {
+				n++
+			} else {
 				break
 			}
-			if err != nil {
-				fmt.Println(err)
-				break
-			}
-			return err
-			// } else {
-			// 	fmt.Printf("read %d bytes\n", n)
 		}
-		nextUntillNewline, err := r.ReadBytes(EOL)
-		// fmt.Printf("%d bytes till new line\n", len(nextUntillNewline))
-		if err != io.EOF {
-			chunk = append(chunk, nextUntillNewline...)
+		chunk := data[:n]
+		n++
+		if n >= len(data) {
+			break
 		}
+		data = data[n:]
 
 		semaphore <- struct{}{}
 		wg.Add(1)
@@ -204,7 +216,7 @@ func processChunk(chunk []byte) map[string]*Result {
 		station := string(chunk[nameStart:nameIdx])
 		tempStart := nameIdx + 1
 		tempIdx := tempStart
-		for ; tempIdx <= chunkSize && chunk[tempIdx] != EOL; tempIdx++ {
+		for ; tempIdx < chunkSize && chunk[tempIdx] != EOL; tempIdx++ {
 
 		}
 		temp := parseNumber(chunk[tempStart:tempIdx])
