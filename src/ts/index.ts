@@ -53,9 +53,33 @@ if (isMainThread) {
         const fileStream = fs.createReadStream(filePath, { highWaterMark: chunkSize });
 
         let buffer = '';
-        let workers: Worker[] = [];
+        let workerPromises: Promise<void>[] = [];
 
-        fileStream.on('data', (chunk) => {
+        const processBuffer = async (buffer: string) => {
+            return new Promise<void>((resolve, reject) => {
+                const worker = new Worker(__filename, {
+                    workerData: { chunk: buffer }
+                });
+
+                worker.on('message', (message) => {
+                    mergeTemperatureMaps(temperatureMap, message);
+                    resolve();
+                });
+
+                worker.on('error', (error) => {
+                    console.error('Worker error:', error);
+                    reject(error);
+                });
+
+                worker.on('exit', (code) => {
+                    if (code !== 0) {
+                        reject(new Error(`Worker stopped with exit code ${code}`));
+                    }
+                });
+            });
+        };
+
+        for await (const chunk of fileStream) {
             buffer += chunk.toString();
 
             let lastNewLineIndex = buffer.lastIndexOf('\n');
@@ -63,42 +87,27 @@ if (isMainThread) {
                 let processableChunk = buffer.substring(0, lastNewLineIndex);
                 buffer = buffer.substring(lastNewLineIndex + 1);
 
-                if (workers.length < NUM_CORES) {
-                    const worker = new Worker(__filename, {
-                        workerData: { chunk: processableChunk }
-                    });
-
-                    worker.on('message', (message) => {
-                        mergeTemperatureMaps(temperatureMap, message);
-                        workers = workers.filter(w => w !== worker);
-                    });
-
-                    workers.push(worker);
-                } else {
-                    processChunk(processableChunk);
+                workerPromises.push(processBuffer(processableChunk));
+                if (workerPromises.length >= NUM_CORES) {
+                    await Promise.all(workerPromises);
+                    workerPromises = [];
                 }
             }
-        });
+        }
 
-        fileStream.on('end', async () => {
-            if (buffer.length > 0) {
-                processChunk(buffer);
-            }
+        if (buffer.length > 0) {
+            workerPromises.push(processBuffer(buffer));
+        }
 
-            await Promise.all(workers.map(worker => new Promise(resolve => worker.on('exit', resolve))));
+        await Promise.all(workerPromises);
 
-            const sortedNames = Object.keys(temperatureMap).sort();
+        const sortedNames = Object.keys(temperatureMap).sort();
 
-            for (const name of sortedNames) {
-                const data = temperatureMap[name];
-                const avg = data.sum / data.count;
-                console.log(`${name}=${data.min.toFixed(1)}/${avg.toFixed(1)}/${data.max.toFixed(1)}`);
-            }
-        });
-
-        fileStream.on('error', (err) => {
-            console.error('Error reading file:', err);
-        });
+        for (const name of sortedNames) {
+            const data = temperatureMap[name];
+            const avg = data.sum / data.count;
+            console.log(`${name}=${data.min.toFixed(1)}/${avg.toFixed(1)}/${data.max.toFixed(1)}`);
+        }
     };
 
     const main = () => {
