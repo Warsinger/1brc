@@ -11,8 +11,6 @@ import (
 	"runtime"
 	"runtime/pprof"
 	"sort"
-	"strconv"
-	"strings"
 	"sync"
 )
 
@@ -304,9 +302,4 @@ func printResults(results map[string]*Result) {
 	for _, k := range keys {
 		fmt.Printf("%s=%s\n", k, results[k])
 	}
-}
-
-func parseTemp(value string) (int, error) {
-	tempStr := strings.Split(value, ".")
-	return strconv.Atoi(tempStr[0] + tempStr[1])
 }
