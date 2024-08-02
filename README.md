@@ -52,3 +52,4 @@ When run on the large dataset, it used up all the memory. 2x of my RAM. After a 
 | Baseline ChatGPT, one line at a time | 4m 52s |
 | Read file by lines but process in chunks of 32MB | 5m 47s|
 | Read file in chunks of 32M and process | 4m 24s |
+| First multithreaded attempt | 5m 6s |
