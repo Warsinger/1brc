@@ -23,6 +23,8 @@ const (
 	DASH      byte = '-'
 	DOT       byte = '.'
 	ZERO      byte = '0'
+	ZEROD2         = '0'*10 + 1
+	ZEROD3         = '0'*10 + 1
 )
 
 type Result struct {
@@ -253,12 +255,12 @@ func processChunk(data []byte) map[string]*Result {
 			_ = data[3]
 			if data[1] == '.' {
 				// 1.2\n
-				temp = int16(data[0])*10 + int16(data[2]) - '0'*(10+1)
+				temp = int16(data[0])*10 + int16(data[2]) - ZEROD2
 				data = data[4:]
 				// 12.3\n
 			} else {
 				_ = data[4]
-				temp = int16(data[0])*100 + int16(data[1])*10 + int16(data[3]) - '0'*(100+10+1)
+				temp = int16(data[0])*100 + int16(data[1])*10 + int16(data[3]) - ZEROD3
 				data = data[5:]
 			}
 
