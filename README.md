@@ -45,7 +45,10 @@ the results should be aggregated by name to find the min, max, and average numbe
 Then I told it I wanted to use `bun` and needed to pass in the file name.
 
 The code worked first pass. Just need to adjust the formatting.
+When run on the large dataset, it used up all the memory. 2x of my RAM. After a couple of prompts, chatty gave me some code that ran in pretty much constant memory ~86MB.
 
 | Change | Timing |
 | --- | --- |
-| Baseline ChatGPT (used 35GB RAM and little CPU) |  |
+| Baseline ChatGPT, one line at a time | 4m 52s |
+| Read file by lines but process in chunks of 32MB | 5m 47s|
+| Read file in chunks of 32M and process | 4m 24s |

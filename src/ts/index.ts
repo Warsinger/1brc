@@ -1,5 +1,4 @@
 import * as fs from 'fs';
-import * as readline from 'readline';
 
 interface TemperatureData {
     min: number;
@@ -8,16 +7,12 @@ interface TemperatureData {
     count: number;
 }
 
-const aggregateTemperatures = async (filePath: string) => {
-    const fileStream = fs.createReadStream(filePath);
-    const rl = readline.createInterface({
-        input: fileStream,
-        crlfDelay: Infinity
-    });
+const CHUNK_SIZE = 32 * 1024 * 1024; // 32MB default chunk size
 
-    const temperatureMap: Record<string, TemperatureData> = {};
-
-    for await (const line of rl) {
+const processChunk = (chunk: string, temperatureMap: Record<string, TemperatureData>) => {
+    const lines = chunk.split('\n');
+    for (const line of lines) {
+        if (!line.trim()) continue; // Skip empty lines
         const [name, tempStr] = line.split(';');
         const temp = parseFloat(tempStr);
 
@@ -31,25 +26,55 @@ const aggregateTemperatures = async (filePath: string) => {
             data.count += 1;
         }
     }
+};
 
-    const names = Object.keys(temperatureMap).sort();
+const aggregateTemperatures = async (filePath: string, chunkSize: number) => {
+    const temperatureMap: Record<string, TemperatureData> = {};
 
-    for (const name of names) {
-        const data = temperatureMap[name];
-        const avg = data.sum / data.count;
-        console.log(`${name}: min=${data.min.toFixed(1)}, max=${data.max.toFixed(1)}, avg=${avg.toFixed(1)}`);
-    }
+    const fileStream = fs.createReadStream(filePath, { highWaterMark: chunkSize });
+
+    let buffer = '';
+
+    fileStream.on('data', (chunk) => {
+        buffer += chunk.toString();
+
+        let lastNewLineIndex = buffer.lastIndexOf('\n');
+        if (lastNewLineIndex !== -1) {
+            let processableChunk = buffer.substring(0, lastNewLineIndex);
+            buffer = buffer.substring(lastNewLineIndex + 1);
+            processChunk(processableChunk, temperatureMap);
+        }
+    });
+
+    fileStream.on('end', () => {
+        if (buffer.length > 0) {
+            processChunk(buffer, temperatureMap);
+        }
+
+        const sortedNames = Object.keys(temperatureMap).sort();
+
+        for (const name of sortedNames) {
+            const data = temperatureMap[name];
+            const avg = data.sum / data.count;
+            console.log(`${name}=${data.min.toFixed(1)}/${avg.toFixed(1)}/${data.max.toFixed(1)}`);
+        }
+    });
+
+    fileStream.on('error', (err) => {
+        console.error('Error reading file:', err);
+    });
 };
 
 const main = () => {
     const args = process.argv.slice(2);
-    if (args.length !== 1) {
-        console.error('Usage: bun run ts-node index.ts <file-path>');
+    if (args.length < 1 || args.length > 2) {
+        console.error('Usage: bun run ts-node index.ts <file-path> [chunk-size-in-mb]');
         process.exit(1);
     }
 
     const filePath = args[0];
-    aggregateTemperatures(filePath).catch(err => console.error(err));
+    const chunkSize = args.length === 2 ? parseInt(args[1], 10) * 1024 * 1024 : CHUNK_SIZE;
+    aggregateTemperatures(filePath, chunkSize).catch(err => console.error(err));
 };
 
 main();
