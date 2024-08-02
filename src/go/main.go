@@ -17,14 +17,14 @@ import (
 )
 
 const (
-	READ_SIZE      = 4096 * 8192
+	READ_SIZE      = 32 * 1024 * 1024
 	EOL       byte = '\n'
 	SEMICOLON byte = ';'
 	DASH      byte = '-'
 	DOT       byte = '.'
 	ZERO      byte = '0'
-	ZEROD2         = '0'*10 + 1
-	ZEROD3         = '0'*10 + 1
+	ZEROD2         = '0' * (10 + 1)
+	ZEROD3         = '0' * (100 + 10 + 1)
 )
 
 type Result struct {
@@ -230,7 +230,7 @@ func processChunk(data []byte) map[string]*Result {
 		idHash := uint64(fnv1aOffset64)
 		semiPos := 0
 		for i, b := range data {
-			if b == ';' {
+			if b == SEMICOLON {
 				semiPos = i
 				break
 			}
@@ -247,13 +247,13 @@ func processChunk(data []byte) map[string]*Result {
 		var temp int16
 		// parseNumber
 		{
-			negative := data[0] == '-'
+			negative := data[0] == DASH
 			if negative {
 				data = data[1:]
 			}
 
 			_ = data[3]
-			if data[1] == '.' {
+			if data[1] == DOT {
 				// 1.2\n
 				temp = int16(data[0])*10 + int16(data[2]) - ZEROD2
 				data = data[4:]
