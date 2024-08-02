@@ -35,3 +35,17 @@ Reading 64MB chunks at a time is ~3s
 | ~~read results into arrays rather than channels ~~ | 10.8s |
 | process chunk using custom hashing from [official repo go submission](https://github.com/gunnarmorling/1brc/blob/4daeb94b048e074c2b80aac1074b68eb92285ea8/src/main/go/AlexanderYastrebov/calc.go#L132) | 5.1s |
 | don't check for hash collisions | 4.6s |
+
+## TypeScript
+
+I had ChatGPT generate the baseline code with this prompt
+>> i want a basic typescript project that reads in a set of lines from a file that contain a name and a number separated by a semicolon. the numbers are temperatures ranging from -99.9 to 99.9 and have only one decimal point
+the results should be aggregated by name to find the min, max, and average number
+
+Then I told it I wanted to use `bun` and needed to pass in the file name.
+
+The code worked first pass. Just need to adjust the formatting.
+
+| Change | Timing |
+| --- | --- |
+| Baseline ChatGPT (used 35GB RAM and little CPU) |  |

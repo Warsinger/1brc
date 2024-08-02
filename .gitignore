@@ -2,5 +2,5 @@ build/
 src/java/CalculateAverage_*.java
 .DS_Store
 profile.html
-out*.txt
-large.prof
+output/
+*.prof
