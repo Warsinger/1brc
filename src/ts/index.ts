@@ -119,7 +119,10 @@ if (isMainThread) {
 
         const filePath = args[0];
         const chunkSize = args.length === 2 ? parseInt(args[1], 10) * 1024 * 1024 : CHUNK_SIZE;
-        aggregateTemperatures(filePath, chunkSize).catch(err => console.error(err));
+        aggregateTemperatures(filePath, chunkSize).catch(err => {
+            console.error(err);
+            process.exitCode = 1;
+        });
     };
 
     main();
@@ -146,5 +149,6 @@ if (isMainThread) {
     };
 
     const temperatureMap = processChunk(workerData.chunk);
+    if (!parentPort) throw new Error("Worker message port is unavailable");
     parentPort.postMessage(temperatureMap);
 }

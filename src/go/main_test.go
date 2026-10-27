@@ -48,19 +48,20 @@ func TestAverage(t *testing.T) {
 func TestParseNumber(t *testing.T) {
 	for _, tc := range []struct {
 		value    string
-		expected string
+		expected int16
 	}{
-		{value: "-99.9", expected: "-999"},
-		{value: "-12.3", expected: "-123"},
-		{value: "-1.5", expected: "-15"},
-		{value: "-1.0", expected: "-10"},
-		{value: "0.0", expected: "0"},
-		{value: "0.3", expected: "3"},
-		{value: "12.3", expected: "123"},
-		{value: "99.9", expected: "999"},
+		{"-99.9", -999}, {"-12.3", -123}, {"-1.5", -15}, {"-1.0", -10},
+		{"0.0", 0}, {"0.3", 3}, {"12.3", 123}, {"99.9", 999},
 	} {
-		if number, _ := parseTemp(tc.value); fmt.Sprintf("%d", number) != tc.expected {
-			t.Errorf("Wrong parsing of %v, expected: %s, got: %d", tc.value, tc.expected, number)
-		}
+		t.Run(tc.value, func(t *testing.T) {
+			results := processChunk([]byte("Station;" + tc.value + "\n"))
+			result := results["Station"]
+			if len(results) != 1 || result == nil {
+				t.Fatalf("unexpected stations: %v", results)
+			}
+			if result.min != tc.expected || result.max != tc.expected || result.sum != int64(tc.expected) || result.count != 1 {
+				t.Fatalf("parsing %s: got min=%d max=%d sum=%d count=%d, want temperature %d and count 1", tc.value, result.min, result.max, result.sum, result.count, tc.expected)
+			}
+		})
 	}
 }
