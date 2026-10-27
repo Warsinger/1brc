@@ -22,6 +22,9 @@ Timings are on Apple MBPro M1 16GB RAM
 
 ## Go
 
+Use Go 1.27.3 or newer, matching `go.mod`. Build the Go executable from the
+repository root with `go build -o ./build/brc ./src/go`.
+
 Reading only using Scanner with defaults, took ~23s.
 Reading 64MB chunks at a time is ~3s
 
