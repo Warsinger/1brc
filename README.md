@@ -79,17 +79,17 @@ The parser regression exercises `processChunk`, including signed one- and
 two-digit temperatures, rather than the removed `parseTemp` helper.
 The race detector requires a supported C toolchain.
 
-Java (JDK 21 or newer; CI uses Temurin 21):
+Java (JDK 27 or newer; CI uses the latest Temurin 27 patch):
 
 ```sh
 mkdir -p build/java
-javac --release 21 -d build/java src/java/*.java
+javac --release 27 -d build/java src/java/*.java
 java -cp build/java CalculateAverageTest
 ```
 
 The Java tests throw on parser/aggregation failures so CI exits unsuccessfully.
 
-TypeScript (Bun 1.4.4; existing locked dependencies):
+TypeScript 7.0.2 (Bun 1.4.4; locked development dependencies):
 
 ```sh
 cd src/ts

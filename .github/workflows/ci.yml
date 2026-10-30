@@ -36,9 +36,10 @@ jobs:
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
-          java-version: '21'
+          java-version: '27'
+          check-latest: true
       - run: mkdir -p build/java
-      - run: javac --release 21 -d build/java src/java/*.java
+      - run: javac --release 27 -d build/java src/java/*.java
       - run: java -cp build/java CalculateAverageTest
 
   typescript:
