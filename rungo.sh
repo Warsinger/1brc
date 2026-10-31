@@ -1,6 +1,6 @@
 #!/bin/bash -e +x
 
-go build -o ./build/brc ./src/go/*.go
+go build -o ./build/brc ./src/go
 
 # time ./build/brc -file /Users/mlee/Downloads/data/measurements_sm.txt
 # time ./build/brc -file /Users/mlee/Downloads/data/accra.txt

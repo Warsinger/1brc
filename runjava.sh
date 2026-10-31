@@ -1,7 +1,8 @@
 #!/bin/bash -e +x
 
 export JAVA_OPTS="--enable-preview"
-javac -sourcepath src/java -d build/java src/java/CalculateAverage.java src/java/CalculateAverageTest.java src/java/CalculateAverage_AbstractKamen.java
+mkdir -p build/java
+javac --release 27 -d build/java src/java/*.java
 
 # time java -cp build/java CalculateAverage ./data/weather_stations.csv
 # time java -Xmx6g -cp build/java CalculateAverage_AbstractKamen  /Users/mlee/Downloads/data/measurements_med.txt

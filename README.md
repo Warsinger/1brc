@@ -58,3 +58,53 @@ When run on the large dataset, it used up all the memory. 2x of my RAM. After a 
 | Read file in chunks of 32M and process | 4m 24s |
 | First multithreaded attempt | 5m 6s |
 | Second multithreaded attempt | 4m 24s |
+
+## Build and test
+
+CI runs separate Go, Java and TypeScript jobs on pull requests, pushes to main,
+and manual dispatch. Standard Actions use major version tags. Tests use small
+fixtures; they do not run the billion-row benchmark or enforce performance timings.
+
+Go (version from `go.mod`):
+
+```sh
+go test -race ./...
+go vet ./...
+go mod verify
+go mod tidy -diff
+go build -o build/brc ./src/go
+```
+
+The parser regression exercises `processChunk`, including signed one- and
+two-digit temperatures, rather than the removed `parseTemp` helper.
+The race detector requires a supported C toolchain.
+
+Java (JDK 27 or newer; CI uses the latest Temurin 27 patch):
+
+```sh
+mkdir -p build/java
+javac --release 27 -d build/java src/java/*.java
+java -cp build/java CalculateAverageTest
+```
+
+The Java tests throw on parser/aggregation failures so CI exits unsuccessfully.
+
+TypeScript 7.0.2 (Bun 1.4.4; locked development dependencies):
+
+```sh
+cd src/ts
+bun install --frozen-lockfile
+bunx tsc --noEmit
+bun test
+mkdir -p ../../build/ts
+bun build index.ts --target=bun --outfile=../../build/ts/index.js
+BRC_ENTRY=../../build/ts/index.js bun test
+```
+
+TypeScript tests run the real CLI and workers against both source and built
+JavaScript. They cover repeated stations, sorted output, signed/extreme values,
+records split across reads, a final line without a newline, and missing input
+files. Input/worker errors now produce a nonzero CLI exit code.
+
+The historical run scripts still contain the author's local
+benchmark input paths; edit those paths before running a benchmark.
